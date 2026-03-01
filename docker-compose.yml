@@ -1,0 +1,8 @@
+version: "3.8"
+
+services:
+  worker:
+    image: ana-worker:latest
+    restart: unless-stopped
+    # Se o serviço dependesse de um RabbitMQ local no mesmo docker-compose, você usaria 'depends_on'.
+    # Como ele deve ler a nuvem/VPS host, a env define a conexão.
