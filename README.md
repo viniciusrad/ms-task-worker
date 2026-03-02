@@ -39,3 +39,31 @@ Para ver em tempo real como o processo da LLM está ocorrendo na VPS (os logs do
 ```bash
 docker-compose logs -f worker
 ```
+
+# Passo a passo para enviar a imagem para a vps
+
+1. Crie a imagem localmente:
+```bash
+docker build -t ana-worker:latest .
+```
+
+2. Salve a imagem:
+```bash
+docker save -o ana-worker.tar ana-worker:latest
+```
+
+3. Transfira o arquivo `ana-worker.tar` para a VPS (via SCP ou FTP do Windows):
+comando urilizado: 
+```bash
+scp -o ServerAliveInterval=15 -o ServerAliveCountMax=60 -o TCPKeepAlive=yes ./ana-worker.tar root@191.252.196.119:/var/www/app/
+```
+
+4. Carregue a imagem na VPS:
+```bash
+docker load -i ana-worker.tar
+```
+
+5. Suba o container:
+```bash
+docker-compose up -d
+```
