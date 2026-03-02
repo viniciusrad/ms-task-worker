@@ -63,14 +63,8 @@ async function startWorker() {
       const payload = JSON.parse(msg.content.toString());
 
       if (payload.type === 'generate-quiz' || payload.type === 'generate-flashcards') {
-        console.log(`[Analysis Queue] Task has type '${payload.type}'. Routing to Quiz Processor instead of Notebook Analysis...`);
-        try {
-          await processQuizTask(payload);
-          analysisChannel.ack(msg);
-        } catch (error) {
-          console.error(`[Analysis Queue] Routed Quiz Job FAILED:`, error);
-          analysisChannel.nack(msg, false, false);
-        }
+        console.log(`[Analysis Queue] Ignorando task do tipo '${payload.type}' pois ela será processada pela fila dedicada ana.quiz-worker.`);
+        analysisChannel.ack(msg); // Remove da fila principal sem processar duplo
         return;
       }
 
