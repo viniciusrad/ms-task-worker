@@ -5,6 +5,30 @@ export interface Flashcard {
   answer: string
 }
 
+const flashcardsSchema = {
+  name: "Flashcards",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["flashcards"],
+    properties: {
+      flashcards: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["question", "answer"],
+          properties: {
+            question: { type: "string" },
+            answer: { type: "string" }
+          }
+        }
+      }
+    }
+  }
+};
+
 export async function generateFlashcards(
   topics: string[],
   count = 3,
@@ -32,6 +56,7 @@ export async function generateFlashcards(
       },
     ],
     max_tokens: 2048,
+    response_format: { type: "json_schema", json_schema: flashcardsSchema }
   }
 
   const apiKey = process.env.OPENAI_API_KEY
@@ -89,5 +114,21 @@ export async function generateFlashcards(
     .replace(/```/g, "")
     .trim()
 
-  return JSON.parse(cleanContent)
+  try {
+    const parsed = JSON.parse(cleanContent);
+    
+    if (parsed.flashcards && Array.isArray(parsed.flashcards)) {
+      return parsed.flashcards;
+    }
+    
+    if (Array.isArray(parsed)) {
+      return parsed; // Fallback caso ignore o schema (improvável com strict: true)
+    }
+    
+    throw new Error("Formato de resposta inesperado");
+  } catch (error) {
+    console.error("Erro ao processar JSON no generateFlashcards:", error);
+    console.error("Conteúdo gerado:", cleanContent.substring(0, 500));
+    throw error;
+  }
 }
