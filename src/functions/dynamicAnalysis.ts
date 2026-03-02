@@ -114,8 +114,7 @@ DO NOT repeat the same icon for all subtopics.
       ? `\n\n⚠️ CRITICAL - RESPONSE LANGUAGE: Your ENTIRE JSON response MUST be in US ENGLISH.`
       : `\n\n⚠️ CRÍTICO - IDIOMA DA RESPOSTA: TODA a sua resposta JSON DEVE estar em PORTUGUÊS BRASILEIRO.`;
 
-    // No worker testaremos com gpt-5-mini
-    const baseModel = "gpt-5-mini";
+    const baseModel = process.env.OPENAI_MODEL || "gpt-4o-mini";
     const selectedModel = getModelName(baseModel);
 
     const systemPrompt = systemMessage + languageEnforcement;
@@ -123,13 +122,14 @@ DO NOT repeat the same icon for all subtopics.
 
     console.log(`[Worker] Preparing to call OpenAI with model ${selectedModel} (from ${baseModel})...`);
 
+    const userMessageContent: any[] = [{ type: "text", text: userText }];
+    if (imageUrlOrBase64) {
+      userMessageContent.push({ type: "image_url", image_url: { url: imageUrlOrBase64, detail: "low" } });
+    }
+
     const messages: any[] = [
       { role: "system", content: systemPrompt },
-      { role: "user", content: [
-          { type: "text", text: userText },
-          { type: "image_url", image_url: { url: imageUrlOrBase64, detail: "low" } }
-        ]
-      }
+      { role: "user", content: userMessageContent }
     ];
 
     let res: any;

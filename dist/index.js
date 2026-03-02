@@ -7,8 +7,14 @@ const amqplib_1 = __importDefault(require("amqplib"));
 require("dotenv/config");
 const supabase_1 = require("./lib/supabase");
 const dynamicAnalysis_1 = require("./functions/dynamicAnalysis");
+const getQuestionsFromTopics_1 = require("./functions/getQuestionsFromTopics");
+const generateFlashcards_1 = require("./functions/generateFlashcards");
+const saveQuizQuestions_1 = require("./functions/saveQuizQuestions");
+const job_status_1 = require("./lib/job-status");
+const rewards_1 = require("./lib/rewards");
 // The Queue Name that Ana is pushing tasks into
 const RABBITMQ_QUEUE = process.env.RABBITMQ_QUEUE || 'notebook-analysis';
+const QUIZ_QUEUE_NAME = process.env.QUIZ_QUEUE_NAME || 'ana.quiz-worker';
 async function startWorker() {
     const rabbitUrl = process.env.RABBITMQ_URL;
     if (!rabbitUrl) {
@@ -43,34 +49,27 @@ async function startWorker() {
         console.error("[Worker] Failed to connect to Supabase. Please check your credentials.", error);
         process.exit(1);
     }
-    const channel = await connection.createChannel();
-    // Assert queue to ensure it exists
-    await channel.assertQueue(RABBITMQ_QUEUE, {
-        durable: true // We want persistent jobs
-    });
-    const concurrency = parseInt(process.env.CONCURRENCY || '1', 10);
-    // Tell RabbitMQ not to give more than X messages at a time to this worker
-    channel.prefetch(concurrency);
-    console.log(`[Worker] Waiting for messages in queue: ${RABBITMQ_QUEUE}. Concurrency: ${concurrency}`);
-    channel.consume(RABBITMQ_QUEUE, async (msg) => {
+    // CHANNEL 1: Notebook Analysis
+    const analysisChannel = await connection.createChannel();
+    await analysisChannel.assertQueue(RABBITMQ_QUEUE, { durable: true });
+    const analysisConcurrency = parseInt(process.env.CONCURRENCY || '1', 10);
+    analysisChannel.prefetch(analysisConcurrency);
+    console.log(`[Worker] Waiting for messages in queue: ${RABBITMQ_QUEUE}. Concurrency: ${analysisConcurrency}`);
+    analysisChannel.consume(RABBITMQ_QUEUE, async (msg) => {
         if (msg !== null) {
             console.log(`\n[Worker] ---------------------------------------------`);
-            console.log(`[Worker] Received new job from queue!`);
+            console.log(`[Analysis Queue] Received new job!`);
             const payload = JSON.parse(msg.content.toString());
             try {
-                console.log(`[Worker] Job Data: NoteId=${payload.noteId}, UserId=${payload.userId}`);
+                console.log(`[Analysis Queue] Job Data: NoteId=${payload.noteId}, UserId=${payload.userId}`);
                 const supabase = (0, supabase_1.getServiceRoleClient)();
-                // Ensure note status is 'processing'
-                // If not, it means the job has been pulled before and failed perhaps? We update just in case.
                 await supabase
                     .from('note')
                     .update({ status: 'processing', updated_at: new Date().toISOString() })
                     .eq('id', payload.noteId);
-                console.log(`[Worker] Executing LLM Analysis... this may take a while.`);
-                // Run AI Analysis - NOTE: This blocks the current async thread, meaning heartbeat must be native to the amqplib socket (which it is)
+                console.log(`[Analysis Queue] Executing LLM Analysis... this may take a while.`);
                 const analysisResult = await (0, dynamicAnalysis_1.dynamicAnalysis)(payload.imageUrl, 'analisar', 'pt-BR', payload.userId);
-                console.log(`[Worker] LLM Analysis Complete. Saving to Supabase...`);
-                // Save Analysis to DB
+                console.log(`[Analysis Queue] LLM Analysis Complete. Saving to Supabase...`);
                 const { error: dbError } = await supabase
                     .from('note')
                     .update({
@@ -81,20 +80,14 @@ async function startWorker() {
                     updated_at: new Date().toISOString()
                 })
                     .eq('id', payload.noteId);
-                if (dbError) {
+                if (dbError)
                     throw new Error(`DB Execution Error: ${dbError.message}`);
-                }
-                console.log(`[Worker] Job Fully Completed (Note: ${payload.noteId}). Acking message.`);
-                channel.ack(msg); // Remove from queue
+                console.log(`[Analysis Queue] Job Fully Completed (Note: ${payload.noteId}). Acking message.`);
+                analysisChannel.ack(msg);
             }
             catch (error) {
-                console.error(`[Worker] Job FAILED:`, error);
-                // Wait, what to do if it fails?
-                // We reject the message so it goes back to queue or dead-letter-exchange. 
-                // We set second param (requeue) to false if we don't want infinite loops on poison messages.
-                // For now, let's requeue so ana's internal logic handles retry counts if implemented.
-                channel.nack(msg, false, true);
-                // Also try to update status in DB to error so user knows
+                console.error(`[Analysis Queue] Job FAILED:`, error);
+                analysisChannel.nack(msg, false, true);
                 try {
                     const supabase = (0, supabase_1.getServiceRoleClient)();
                     await supabase
@@ -106,5 +99,122 @@ async function startWorker() {
             }
         }
     });
+    // CHANNEL 2: Quiz worker
+    const quizChannel = await connection.createChannel();
+    await quizChannel.assertQueue(QUIZ_QUEUE_NAME, { durable: true });
+    const quizConcurrency = parseInt(process.env.QUIZ_PREFETCH || '3', 10);
+    quizChannel.prefetch(quizConcurrency);
+    console.log(`[Worker] Waiting for messages in queue: ${QUIZ_QUEUE_NAME}. Concurrency: ${quizConcurrency}`);
+    quizChannel.consume(QUIZ_QUEUE_NAME, async (msg) => {
+        if (msg !== null) {
+            console.log(`\n[Worker] ---------------------------------------------`);
+            console.log(`[Quiz Queue] Received new job!`);
+            const payload = JSON.parse(msg.content.toString());
+            try {
+                await processQuizTask(payload);
+                console.log(`[Quiz Queue] Job Fully Completed (Type: ${payload.type}, ID: ${payload.jobId}). Acking message.`);
+                quizChannel.ack(msg);
+            }
+            catch (error) {
+                console.error(`[Quiz Queue] Job FAILED:`, error);
+                quizChannel.nack(msg, false, false); // No requeue on critical failure, let DLQ or Ana's retry mechanism handle it by reading job-status
+            }
+        }
+    });
+}
+// -------------------------------------------------------------
+// Helper to process quiz payloads
+// -------------------------------------------------------------
+async function processQuizTask(task) {
+    let jobId = task.jobId || 'unknown';
+    const { type, payload, userId } = task;
+    // Update status to processing (Supabase)
+    if (jobId && jobId !== 'unknown') {
+        await (0, job_status_1.setJobStatus)(jobId, { status: 'processing' });
+    }
+    try {
+        if (type === 'generate-quiz') {
+            const { topics, locale, analyzedImageId, quizId: existingQuizId } = payload;
+            // 1. Gerar Questões (GPT)
+            const questions = await (0, getQuestionsFromTopics_1.getQuestionsFromTopics)(topics, locale);
+            // 2. Client Supabase Service Role
+            const supabaseService = (0, supabase_1.getServiceRoleClient)();
+            // 3. Preparar dados para salvar
+            const quizData = {
+                title: `Quiz - ${topics.map((t) => t.title).join(', ')}`,
+                description: `Quiz gerado automaticamente sobre ${topics.map((t) => t.category).join(', ')}`,
+                userId: userId,
+                analyzedImageId: analyzedImageId,
+                questions: questions.map((q, index) => ({
+                    id: `${index + 1}`,
+                    topic: q.topic,
+                    subtopic: q.category,
+                    question: q.question,
+                    options: q.options,
+                    correctAnswer: q.correctAnswer,
+                    explanation: q.explanation
+                }))
+            };
+            // 4. Salvar no Banco
+            const saveResult = await (0, saveQuizQuestions_1.saveQuizQuestions)(quizData, supabaseService, existingQuizId);
+            // 5. Recompensas
+            await (0, rewards_1.addReward)(userId, 'analyze_image', supabaseService);
+            // 6. Update Status (Supabase)
+            const resultData = {
+                success: true,
+                questions,
+                quizId: saveResult.quizId,
+                message: 'Quiz criado e salvo com sucesso'
+            };
+            await (0, job_status_1.setJobStatus)(jobId, {
+                status: 'completed',
+                result: resultData
+            });
+        }
+        else if (type === 'generate-flashcards') {
+            const { topics, count, locale, flashcardId } = payload;
+            // 1. Gerar Flashcards (GPT)
+            const flashcards = await (0, generateFlashcards_1.generateFlashcards)(topics, count, locale);
+            // 2. Atualizar registro no Banco
+            const supabaseService = (0, supabase_1.getServiceRoleClient)();
+            if (flashcardId) {
+                const { error: updateError } = await supabaseService
+                    .from('flashcards')
+                    .update({
+                    flashcard_body: flashcards,
+                })
+                    .eq('id', flashcardId);
+                if (updateError) {
+                    throw new Error(`Failed to update flashcards record: ${updateError.message}`);
+                }
+            }
+            else {
+                console.warn("[Quiz Queue] ⚠️ No flashcardId provided, skipping DB update.");
+            }
+            // 3. Update Status (Supabase)
+            await (0, job_status_1.setJobStatus)(jobId, {
+                status: 'completed',
+                result: { flashcards }
+            });
+            // 4. Recompensas
+            await (0, rewards_1.addReward)(userId, 'view_flashcards', supabaseService);
+        }
+        else {
+            console.warn(`[Quiz Queue] ⚠️ Unknown task type: ${type}`);
+            throw new Error(`Unknown task type: ${type}`);
+        }
+    }
+    catch (err) {
+        console.error("             ❌ Erro Task:", err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        // Update status to failed (Supabase)
+        if (jobId && jobId !== 'unknown') {
+            await (0, job_status_1.setJobStatus)(jobId, {
+                status: 'failed',
+                error: errorMessage
+            });
+        }
+        throw err; // bubble up so channel can nack
+    }
 }
 startWorker().catch(e => console.error("Fatal Worker Error:", e));
