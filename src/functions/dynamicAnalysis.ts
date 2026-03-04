@@ -23,11 +23,12 @@ const schema = {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["subtopico", "descricao", "icone"],
+          required: ["subtopico", "descricao", "icone", "image_search_query"],
           properties: {
             subtopico: { type: "string" },
             descricao: { type: "string" },
             icone: { type: ["string", "null"] },
+            image_search_query: { type: "string" }
           }
         }
       },
@@ -101,7 +102,9 @@ NÃO repita o mesmo ícone para todos os subtópicos. Escolha um ícone que repr
 5. IMPORTANTE: O schema JSON é strict. Coloque TODA a explicação teórica e exemplos de cada tópico ÚNICA E EXCLUSIVAMENTE dentro do campo "descricao" do "conteudo".
 6. TRANSCRIÇÃO PRELIMINAR: É estritamente obrigatório preencher \`transcricao_preliminar\` com tudo o que você pode ler na imagem, ANTES de estruturar o conteúdo.
 7. MÉTRICAS: Avalie \`inference_porcentage\` (0-100) sobre o quanto da imagem você interpretou, e \`error_margin\` (0-100) estimado.
-    `;
+8. Quando precisar de um parágrafo, seja para enumeração de itens, ou organização de texto, use \n para quebrar a linha.
+
+`;
 
     const restrictionsEN = `
 ICONS - MANDATORY RULES:

@@ -65,5 +65,5 @@ docker load -i ana-worker.tar
 
 5. Suba o container:
 ```bash
-docker-compose up -d
+docker compose up -d
 ```

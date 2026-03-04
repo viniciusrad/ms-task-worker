@@ -1,3 +1,6 @@
+*.log
 .env
 node_modules
+*.tar
 dist
+.tar
