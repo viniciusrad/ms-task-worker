@@ -40,7 +40,6 @@ export function getModelName(openAIModel: string): string {
       'gpt-5-mini': 'meta-llama/llama-4-scout-17b-16e-instruct',
       'gpt-5-nano': 'meta-llama/llama-4-scout-17b-16e-instruct',
       'gpt-5': 'meta-llama/llama-4-scout-17b-16e-instruct',
-      'gpt-4o-mini': 'meta-llama/llama-4-scout-17b-16e-instruct',
       'gpt-4o': 'meta-llama/llama-4-scout-17b-16e-instruct',
     };
     return modelMap[openAIModel] || 'meta-llama/llama-4-scout-17b-16e-instruct';
