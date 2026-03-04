@@ -52,7 +52,7 @@ async function getQuestionsFromTopics(topics, locale = 'pt-BR') {
         topicsString
     });
     const body = {
-        model: "gpt-4o-mini",
+        model: process.env.OPENAI_MODEL || "gpt-5-nano",
         temperature: 0.3,
         max_completion_tokens: 1200,
         messages: [
@@ -121,16 +121,22 @@ async function getQuestionsFromTopics(topics, locale = 'pt-BR') {
         .replace(/```/g, "")
         .trim();
     try {
-        const parsed = JSON.parse(cleanContent);
-        // Extrair array de questões do objeto wrapper (schema requer root object)
-        const result = parsed.questions || parsed;
-        // Validar se o resultado é um array de questões
+        let parsed = JSON.parse(cleanContent);
+        console.log(`[getQuestionsFromTopics] Successfully parsed JSON string. Type: ${typeof parsed}, IsArray: ${Array.isArray(parsed)}`);
+        // Extract array of questions depending on how OpenAI formatted the response
+        let result = parsed;
+        if (parsed.questions && Array.isArray(parsed.questions)) {
+            console.log(`[getQuestionsFromTopics] Extracted questions from parsed.questions wrapper.`);
+            result = parsed.questions;
+        }
         if (!Array.isArray(result)) {
+            console.error(`[getQuestionsFromTopics] Final result is NOT an array. Result structure:`, JSON.stringify(result).substring(0, 200));
             throw new Error("Resposta da API não é um array de questões");
         }
         if (result.length === 0) {
             throw new Error("Nenhuma questão foi gerada");
         }
+        console.log(`[getQuestionsFromTopics] Returning ${result.length} questions from LLM.`);
         return result;
     }
     catch (finalError) {

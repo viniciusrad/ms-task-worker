@@ -2,6 +2,29 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateFlashcards = generateFlashcards;
 const index_1 = require("./prompts/index");
+const flashcardsSchema = {
+    name: "Flashcards",
+    strict: true,
+    schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["flashcards"],
+        properties: {
+            flashcards: {
+                type: "array",
+                items: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["question", "answer"],
+                    properties: {
+                        question: { type: "string" },
+                        answer: { type: "string" }
+                    }
+                }
+            }
+        }
+    }
+};
 async function generateFlashcards(topics, count = 3, locale = 'pt-BR') {
     const systemPrompt = (0, index_1.getPrompt)('generateFlashcards.system', locale);
     // Build a more explicit prompt that requests count flashcards PER topic
@@ -11,7 +34,7 @@ async function generateFlashcards(topics, count = 3, locale = 'pt-BR') {
         topics: topicsList
     });
     const body = {
-        model: "gpt-4o-mini",
+        model: process.env.OPENAI_MODEL || "gpt-5-nano",
         messages: [
             {
                 role: "system",
@@ -22,7 +45,8 @@ async function generateFlashcards(topics, count = 3, locale = 'pt-BR') {
                 content: userPrompt,
             },
         ],
-        max_tokens: 600,
+        max_tokens: 2048,
+        response_format: { type: "json_schema", json_schema: flashcardsSchema }
     };
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -72,5 +96,19 @@ async function generateFlashcards(topics, count = 3, locale = 'pt-BR') {
         .replace(/```json\s*/g, "")
         .replace(/```/g, "")
         .trim();
-    return JSON.parse(cleanContent);
+    try {
+        const parsed = JSON.parse(cleanContent);
+        if (parsed.flashcards && Array.isArray(parsed.flashcards)) {
+            return parsed.flashcards;
+        }
+        if (Array.isArray(parsed)) {
+            return parsed; // Fallback caso ignore o schema (improvável com strict: true)
+        }
+        throw new Error("Formato de resposta inesperado");
+    }
+    catch (error) {
+        console.error("Erro ao processar JSON no generateFlashcards:", error);
+        console.error("Conteúdo gerado:", cleanContent.substring(0, 500));
+        throw error;
+    }
 }

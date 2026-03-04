@@ -44,7 +44,7 @@ export async function generateFlashcards(
   });
   
   const body = {
-    model: "gpt-4o-mini",
+    model: process.env.OPENAI_MODEL || "gpt-5-nano",
     messages: [
       {
         role: "system",

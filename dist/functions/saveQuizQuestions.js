@@ -34,25 +34,33 @@ async function saveQuizQuestions(quizData, client, existingQuizId) {
         }
         if (!quizId)
             throw new Error("Falha ao determinar ID do Quiz");
+        console.log(`[saveQuizQuestions] Quiz ID secured: ${quizId}. Preparing to insert ${quizData.questions.length} questions.`);
         // 2. Preparar as questões para inserção
-        const questionsToInsert = quizData.questions.map(question => ({
-            quiz_id: quizId,
-            question_text: question.question,
-            options: question.options.map((option, index) => ({
-                text: option,
-                isCorrect: index === question.correctAnswer
-            })),
-            correct_option_index: question.correctAnswer,
-            explanation: question.explanation,
-            topic: question.topic,
-            subtopic: question.subtopic || null
-        }));
+        const questionsToInsert = quizData.questions.map((question, qIdx) => {
+            console.log(`[saveQuizQuestions] Prepping question ${qIdx + 1}: ${question.topic} - ${question.question}`);
+            return {
+                quiz_id: quizId,
+                question_text: question.question,
+                options: question.options.map((option, index) => ({
+                    text: option,
+                    isCorrect: index === question.correctAnswer
+                })),
+                correct_option_index: question.correctAnswer,
+                explanation: question.explanation,
+                topic: question.topic,
+                subtopic: question.subtopic || null
+            };
+        });
         // 3. Inserir todas as questões de uma vez
+        console.log(`[saveQuizQuestions] Executing Supabase insert for ${questionsToInsert.length} questions...`);
         const { error: questionsError } = await client
             .from('quiz_question')
             .insert(questionsToInsert);
-        if (questionsError)
+        if (questionsError) {
+            console.error(`[saveQuizQuestions] Supabase insert error:`, questionsError);
             throw questionsError;
+        }
+        console.log(`[saveQuizQuestions] Success! All ${questionsToInsert.length} questions inserted.`);
         return {
             success: true,
             message: `Quiz "${quizData.title}" criado com ${quizData.questions.length} questões`,

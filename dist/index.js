@@ -60,6 +60,11 @@ async function startWorker() {
             console.log(`\n[Worker] ---------------------------------------------`);
             console.log(`[Analysis Queue] Received new job!`);
             const payload = JSON.parse(msg.content.toString());
+            if (payload.type === 'generate-quiz' || payload.type === 'generate-flashcards') {
+                console.log(`[Analysis Queue] Ignorando task do tipo '${payload.type}' pois ela será processada pela fila dedicada ana.quiz-worker.`);
+                analysisChannel.ack(msg); // Remove da fila principal sem processar duplo
+                return;
+            }
             try {
                 console.log(`[Analysis Queue] Job Data: NoteId=${payload.noteId}, UserId=${payload.userId}`);
                 const supabase = (0, supabase_1.getServiceRoleClient)();
@@ -101,7 +106,10 @@ async function startWorker() {
     });
     // CHANNEL 2: Quiz worker
     const quizChannel = await connection.createChannel();
-    await quizChannel.assertQueue(QUIZ_QUEUE_NAME, { durable: true });
+    await quizChannel.assertQueue(QUIZ_QUEUE_NAME, {
+        durable: true,
+        deadLetterExchange: 'ana.dlx'
+    });
     const quizConcurrency = parseInt(process.env.QUIZ_PREFETCH || '3', 10);
     quizChannel.prefetch(quizConcurrency);
     console.log(`[Worker] Waiting for messages in queue: ${QUIZ_QUEUE_NAME}. Concurrency: ${quizConcurrency}`);

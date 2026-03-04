@@ -117,7 +117,7 @@ DO NOT repeat the same icon for all subtopics.
       ? `\n\n⚠️ CRITICAL - RESPONSE LANGUAGE: Your ENTIRE JSON response MUST be in US ENGLISH.`
       : `\n\n⚠️ CRÍTICO - IDIOMA DA RESPOSTA: TODA a sua resposta JSON DEVE estar em PORTUGUÊS BRASILEIRO.`;
 
-    const baseModel = process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const baseModel = process.env.OPENAI_MODEL || "gpt-5-nano";
     const selectedModel = getModelName(baseModel);
 
     const systemPrompt = systemMessage + languageEnforcement;

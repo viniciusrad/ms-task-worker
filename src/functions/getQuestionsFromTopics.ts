@@ -66,7 +66,7 @@ export async function getQuestionsFromTopics(
     });
     
     const body = {
-        model: "gpt-4o-mini",
+        model: process.env.OPENAI_MODEL || "gpt-5-nano",
         temperature: 0.3,
         max_completion_tokens: 1200,
         messages: [

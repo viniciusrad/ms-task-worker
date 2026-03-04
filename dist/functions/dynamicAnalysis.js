@@ -24,11 +24,12 @@ const schema = {
                 items: {
                     type: "object",
                     additionalProperties: false,
-                    required: ["subtopico", "descricao", "icone"],
+                    required: ["subtopico", "descricao", "icone", "image_search_query"],
                     properties: {
                         subtopico: { type: "string" },
                         descricao: { type: "string" },
                         icone: { type: ["string", "null"] },
+                        image_search_query: { type: "string" }
                     }
                 }
             },
@@ -92,7 +93,9 @@ NÃO repita o mesmo ícone para todos os subtópicos. Escolha um ícone que repr
 5. IMPORTANTE: O schema JSON é strict. Coloque TODA a explicação teórica e exemplos de cada tópico ÚNICA E EXCLUSIVAMENTE dentro do campo "descricao" do "conteudo".
 6. TRANSCRIÇÃO PRELIMINAR: É estritamente obrigatório preencher \`transcricao_preliminar\` com tudo o que você pode ler na imagem, ANTES de estruturar o conteúdo.
 7. MÉTRICAS: Avalie \`inference_porcentage\` (0-100) sobre o quanto da imagem você interpretou, e \`error_margin\` (0-100) estimado.
-    `;
+8. Quando precisar de um parágrafo, seja para enumeração de itens, ou organização de texto, use \n para quebrar a linha.
+
+`;
         const restrictionsEN = `
 ICONS - MANDATORY RULES:
 Each "conteudo" item MUST have an "icone" field with a Lucide React icon name RELEVANT to that specific subtopic.
@@ -102,19 +105,18 @@ DO NOT repeat the same icon for all subtopics.
         const languageEnforcement = locale === 'en-US'
             ? `\n\n⚠️ CRITICAL - RESPONSE LANGUAGE: Your ENTIRE JSON response MUST be in US ENGLISH.`
             : `\n\n⚠️ CRÍTICO - IDIOMA DA RESPOSTA: TODA a sua resposta JSON DEVE estar em PORTUGUÊS BRASILEIRO.`;
-        // No worker testaremos com gpt-5-mini
-        const baseModel = "gpt-5-mini";
+        const baseModel = process.env.OPENAI_MODEL || "gpt-5-nano";
         const selectedModel = (0, llm_config_1.getModelName)(baseModel);
         const systemPrompt = systemMessage + languageEnforcement;
         const userText = `${instruction}\n${restrictions}${languageEnforcement}`;
         console.log(`[Worker] Preparing to call OpenAI with model ${selectedModel} (from ${baseModel})...`);
+        const userMessageContent = [{ type: "text", text: userText }];
+        if (imageUrlOrBase64) {
+            userMessageContent.push({ type: "image_url", image_url: { url: imageUrlOrBase64, detail: "low" } });
+        }
         const messages = [
             { role: "system", content: systemPrompt },
-            { role: "user", content: [
-                    { type: "text", text: userText },
-                    { type: "image_url", image_url: { url: imageUrlOrBase64, detail: "low" } }
-                ]
-            }
+            { role: "user", content: userMessageContent }
         ];
         let res;
         if (llm_config_1.LLM_PROVIDER === 'groq') {
