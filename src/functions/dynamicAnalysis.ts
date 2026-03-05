@@ -85,9 +85,44 @@ export async function dynamicAnalysis(
       }
     }
 
+    let userContextStr = '';
+    if (userProfile) {
+      const { grade, learning_style, neurodivergence_types, neurodivergence_notes, content_preferences, attention_preferences, accessibility_needs } = userProfile;
+      const contextParts: string[] = [];
+      
+      if (grade) contextParts.push(`- Nível Escolar/Idade: ${grade} (Adapte o vocabulário, complexidade e exemplos para esta faixa etária)`);
+      if (learning_style) contextParts.push(`- Estilo de Aprendizagem: ${learning_style}`);
+      
+      const ndTypes = neurodivergence_types && Array.isArray(neurodivergence_types) && neurodivergence_types.length > 0 ? neurodivergence_types.join(', ') : '';
+      if (ndTypes || neurodivergence_notes) {
+        let ndStr = `- Perfil Neurológico: `;
+        if (ndTypes) ndStr += ndTypes;
+        if (neurodivergence_notes) ndStr += ` (${neurodivergence_notes})`;
+        ndStr += ` -> DIRETRIZ NEUROEDUCACIONAL: Estruture o conteúdo, o tamanho dos parágrafos (chunking) e o reforço visual para apoiar essas condições.`;
+        contextParts.push(ndStr);
+      }
+      
+      if (attention_preferences && Array.isArray(attention_preferences) && attention_preferences.length > 0) {
+        contextParts.push(`- Padrão de Atenção: ${attention_preferences.join(', ')}`);
+      }
+      if (content_preferences && Array.isArray(content_preferences) && content_preferences.length > 0) {
+        contextParts.push(`- Preferências de Conteúdo: ${content_preferences.join(', ')}`);
+      }
+      if (accessibility_needs && Array.isArray(accessibility_needs) && accessibility_needs.length > 0) {
+        contextParts.push(`- Acessibilidade: ${accessibility_needs.join(', ')}`);
+      }
+
+      if (contextParts.length > 0) {
+        const contextHeader = locale === 'en-US' 
+          ? `\n\n--- PEDAGOGICAL CONTEXT FOR THIS STUDENT ---\nStrictly adapt your tone, vocabulary, visual formatting (chunking), and analogies to support the following student profile:\n` 
+          : `\n\n--- CONTEXTO PEDAGÓGICO DESTE ALUNO ---\nAdapte estritamente seu tom, vocabulário, formatação visual (chunking) e tipo de analogias para apoiar o seguinte perfil:\n`;
+        userContextStr = contextHeader + contextParts.join('\n') + '\n---------------------------------------------\n';
+      }
+    }
+
     const promptKey = promptMap[mode] || 'dynamicAnalysis.analisar';
     const instruction = getPrompt(promptKey as PromptKey, locale);
-    let systemMessage = getPrompt('dynamicAnalysis.system', locale);
+    let systemMessage = getPrompt('dynamicAnalysis.system', locale, { userContext: userContextStr });
 
     const restrictionsPT = `
 ## ÍCONES - REGRAS OBRIGATÓRIAS
